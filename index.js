@@ -54,6 +54,20 @@ async function run() {
       }
     })
 
+    //Get Single tutor details data
+    app.get("/tutors/:id", async(req, res) => {
+      try {
+        const {id} = req.params;
+        const result = await tutorCollection.findOne({
+          _id: new ObjectId(id)
+        });
+        res.json(result);
+      } catch (err) {
+        res.status(500).json({ message: "Server error", error: err.message });
+      }
+    })
+
+
     await client.db("admin").command({ ping: 1 });
     console.log("Ping pong. Server successfully connected to MongoDB!");
   } finally {
