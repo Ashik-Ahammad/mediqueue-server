@@ -111,12 +111,10 @@ async function run() {
         // validate available slots
         const currentSlotNum = parseInt(tutor.totalSlot);
         if (isNaN(currentSlotNum) || currentSlotNum <= 0) {
-          return res
-            .status(400)
-            .json({
-              message:
-                "This session is fully booked. You can’t join at the moment.",
-            });
+          return res.status(400).json({
+            message:
+              "This session is fully booked. You can’t join at the moment.",
+          });
         }
 
         // save booking record to the db
@@ -124,7 +122,6 @@ async function run() {
 
         // automatically decrease available slot count
         if (result.insertedId) {
-
           const newSlotValue = (currentSlotNum - 1).toString();
 
           await tutorCollection.updateOne(
@@ -139,7 +136,19 @@ async function run() {
       }
     });
 
-    // get tutor created by a single user
+    // get tutors created by a single user
+    app.get("/my-tutors/:userId", async (req, res) => {
+      try {
+        const { userId } = req.params;
+
+        const result = await tutorCollection.find({ userId: userId }).toArray();
+        res.json(result);
+      } catch (err) {
+        res.status(500).json({ message: "Server error", error: err.message });
+      }
+    });
+
+    // get bookings created by a single user
     app.get("/bookings/:userId", async (req, res) => {
       try {
         const { userId } = req.params;
