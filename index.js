@@ -139,6 +139,17 @@ async function run() {
       }
     });
 
+    // get tutor created by a single user
+    app.get("/bookings/:userId", async (req, res) => {
+      try {
+        const { userId } = req.params;
+        const result = await bookingCollection.find({ userId }).toArray();
+        res.json(result);
+      } catch (err) {
+        res.status(500).json({ message: "Server error", error: err.message });
+      }
+    });
+
     await client.db("admin").command({ ping: 1 });
     console.log("Ping pong. Server successfully connected to MongoDB!");
   } finally {
