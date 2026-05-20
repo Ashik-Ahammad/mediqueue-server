@@ -59,7 +59,7 @@ const verifyToken = async (req, res, next) => {
 
 async function run() {
   try {
-    await client.connect();
+    // await client.connect();
     const db = client.db("mediqueue");
     const tutorCollection = db.collection("tutors");
     const bookingCollection = db.collection("bookings");
@@ -309,7 +309,7 @@ async function run() {
     });
 
     // ***************************************** //
-    await client.db("admin").command({ ping: 1 });
+    // await client.db("admin").command({ ping: 1 });
     console.log("Ping pong. Server successfully connected to MongoDB!");
   } finally {
     // await client.close();

@@ -6,7 +6,7 @@ MediQueue Server is the backend API service for the MediQueue Tutor Booking Plat
 
 # 🌐 Server Live URL
 
-🔗 https://your-server-live-url.com
+🔗 https://mediqueue-server-livid.vercel.app
 
 ---
 
