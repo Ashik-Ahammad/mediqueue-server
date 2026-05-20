@@ -13,11 +13,18 @@ const app = express();
 // middleware
 app.use(cors());
 app.use(express.json());
-
 const port = process.env.PORT || 8008;
 
-const uri = process.env.MONGO_URI;
+app.get("/", (req, res) => {
+  res.send("Medique Server is running");
+});
 
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`);
+});
+
+
+const uri = process.env.MONGO_URI;
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
@@ -25,6 +32,7 @@ const client = new MongoClient(uri, {
     deprecationErrors: true,
   },
 });
+
 
 //jwks
 
@@ -317,10 +325,3 @@ async function run() {
 }
 run().catch(console.dir);
 
-app.get("/", (req, res) => {
-  res.send("Medique Server is running");
-});
-
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
-});
