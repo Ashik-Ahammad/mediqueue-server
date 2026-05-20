@@ -4,6 +4,7 @@ const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
+const { createRemoteJWKSet, jwtVerify } = require("jose-node-cjs-runtime");
 // dotenv config
 dotenv.config();
 
@@ -25,6 +26,37 @@ const client = new MongoClient(uri, {
   },
 });
 
+//jwks
+
+const JWKS = createRemoteJWKSet(new URL(`${process.env.CLIENT_URL}/api/auth/jwks`));
+
+//middleware
+
+const verifyToken = async (req, res, next) => {
+  const authHeader = req?.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({
+      message: "Unauthorized",
+    });
+  }
+  const token = authHeader.split(" ")[1];
+  if (!token) {
+    return res.status(401).json({
+      message: "Unauthorized",
+    });
+  }
+
+  try {
+    const { payload } = await jwtVerify(token, JWKS);
+
+    console.log(payload);
+
+    next();
+  } catch (error) {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+};
+
 async function run() {
   try {
     await client.connect();
@@ -34,7 +66,7 @@ async function run() {
 
     // api's
 
-    // Post Tutor to DB
+    // post tutor to DB
     app.post("/tutors", async (req, res) => {
       try {
         const tutorsData = req.body;
@@ -45,10 +77,38 @@ async function run() {
       }
     });
 
-    // Get This Tutor Data
+    // Get TUTORS data with search & date filter
     app.get("/tutors", async (req, res) => {
       try {
-        const result = await tutorCollection.find().toArray();
+        // receieve data of frontend with req.query
+        const { search, startDate, endDate } = req.query;
+
+        // normally empty all data will show
+        let query = {};
+
+        //  $regex logic
+        if (search) {
+          // $regex: to find anything with search value
+          // $options: "i" case insensitive
+          query.tutorName = { $regex: search, $options: "i" };
+        }
+
+        // date filtering logic ($gte & $lte)
+        if (startDate || endDate) {
+          query.startDate = {};
+
+          if (startDate) {
+
+            query.startDate.$gte = startDate;
+          }
+          if (endDate) {
+
+            query.startDate.$lte = endDate;
+          }
+        }
+
+        // now query to find data
+        const result = await tutorCollection.find(query).toArray();
         res.json(result);
       } catch (err) {
         res.status(500).json({ message: "Server error", error: err.message });
@@ -68,7 +128,7 @@ async function run() {
     });
 
     //Get Single tutor details data
-    app.get("/tutors/:id", async (req, res) => {
+    app.get("/tutors/:id", verifyToken, async (req, res) => {
       try {
         const { id } = req.params;
         const result = await tutorCollection.findOne({
@@ -81,9 +141,11 @@ async function run() {
     });
 
     // Post Booking data
-    app.post("/bookings", async (req, res) => {
+    app.post("/bookings", verifyToken, async (req, res) => {
       try {
         const bookingsData = req.body;
+
+        bookingsData.status = "Confirmed";
         const tutorId = bookingsData.tutorId;
 
         // find tutor details from db
@@ -137,7 +199,7 @@ async function run() {
     });
 
     // get tutors created by a single user
-    app.get("/my-tutors/:userId", async (req, res) => {
+    app.get("/my-tutors/:userId", verifyToken, async (req, res) => {
       try {
         const { userId } = req.params;
 
@@ -149,7 +211,7 @@ async function run() {
     });
 
     // get bookings created by a single user
-    app.get("/bookings/:userId", async (req, res) => {
+    app.get("/bookings/:userId", verifyToken, async (req, res) => {
       try {
         const { userId } = req.params;
         const result = await bookingCollection.find({ userId }).toArray();
@@ -159,6 +221,94 @@ async function run() {
       }
     });
 
+    // Cancel booking & increase slot
+    app.patch("/bookings/:id", verifyToken, async (req, res) => {
+      try {
+        const bookingId = new ObjectId(req.params.id);
+
+        // find that booking
+        const booking = await bookingCollection.findOne({ _id: bookingId });
+
+        if (!booking || booking.status === "cancelled") {
+          return res
+            .status(400)
+            .json({ message: "Invalid booking or already cancelled" });
+        }
+
+        // update status to cancel
+        await bookingCollection.updateOne(
+          { _id: bookingId },
+          { $set: { status: "Cancelled" } },
+        );
+
+        // increase slot after cancel
+        const tutor = await tutorCollection.findOne({
+          _id: new ObjectId(booking.tutorId),
+        });
+
+        if (tutor) {
+          const updatedSlot = (parseInt(tutor.totalSlot || 0) + 1).toString();
+
+          await tutorCollection.updateOne(
+            { _id: new ObjectId(booking.tutorId) },
+            { $set: { totalSlot: updatedSlot } },
+          );
+        }
+
+        res.json({ message: "Booking cancelled successfully" });
+      } catch (err) {
+        res.status(500).json({ message: "Server error", error: err.message });
+      }
+    });
+
+    // patch api to edit tutor data in my-tutors page
+    app.patch("/tutors/:id", verifyToken, async (req, res) => {
+      try {
+        const { id } = req.params;
+
+        const updatedData = req.body;
+
+        const result = await tutorCollection.updateOne(
+          {
+            _id: new ObjectId(id),
+          },
+          {
+            $set: updatedData,
+          },
+        );
+
+        res.json(result);
+      } catch (err) {
+        res.status(500).json({
+          message: "Server error",
+          error: err.message,
+        });
+      }
+    });
+
+    // Delete tutor from my tutor page
+    app.delete("/tutors/:id", verifyToken, async (req, res) => {
+      try {
+        const { id } = req.params;
+        const result = await tutorCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+
+        // if tutor get deleted then also cancel all of their booked slots
+        if (result.deletedCount === 1) {
+          await bookingCollection.updateMany(
+            { tutorId: id },
+            { $set: { status: "Cancelled" } },
+          );
+        }
+
+        res.json(result);
+      } catch (err) {
+        res.status(500).json({ message: "Server error", error: err.message });
+      }
+    });
+
+    // ***************************************** //
     await client.db("admin").command({ ping: 1 });
     console.log("Ping pong. Server successfully connected to MongoDB!");
   } finally {
